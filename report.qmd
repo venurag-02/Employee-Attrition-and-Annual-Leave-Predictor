@@ -1,0 +1,23 @@
+---
+title: "Employee Attrition and Annual Leave Predictor"
+author: "Venura Gunaratne"
+editor: visual
+date: today
+format: 
+  typst: 
+    toc: true
+    number-sections: true
+    columns: 1
+    margin: 
+      top: 2.5cm
+      bottom: 2.5cm
+      left: 2cm
+      right: 2cm
+    header: Attrition and Annual Leave Predictor Engine
+    footer: |
+      Venura Gunaratne
+      hfil
+      Page 并 
+---
+
+## 

@@ -1,0 +1,13 @@
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+
+#Prevents from uploading massive ML files
+*.rds
+models/
+
+#Prevents uploading raw data files
+data/
+*.csv
+*.xlsx
