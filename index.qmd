@@ -1,8 +1,10 @@
 ---
 title: "Employee Attrition and Annual Leave Predictor"
+subtitle: "Psychology and Data Science Portfolio"
 author: "Venura Gunaratne"
 format: html
+server: shiny 
 editor: visual
 ---
 
-## 
+## f
