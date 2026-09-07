@@ -1,0 +1,4 @@
+model,metric,value
+Poisson Regression,rmse,1.5609547611401897
+Poisson Regression,rsq,0.3581574208228607
+Poisson Regression,mae,1.196639805709687

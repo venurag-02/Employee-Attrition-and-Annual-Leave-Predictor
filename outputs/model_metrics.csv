@@ -1,0 +1,3 @@
+model,metric,value
+Logistic Regression,ROC-AUC,0.8107287449392713
+XGBoost,ROC-AUC,0.7797739541160594

@@ -1,0 +1,6 @@
+model,target,metric,value
+Logistic Regression,attrition,ROC-AUC,0.8107287449392713
+XGBoost,attrition,ROC-AUC,0.7797739541160594
+Poisson Regression,total_annual_leaves,RMSE,1.5609547611401897
+Poisson Regression,total_annual_leaves,RSQ,0.3581574208228607
+Poisson Regression,total_annual_leaves,MAE,1.196639805709687

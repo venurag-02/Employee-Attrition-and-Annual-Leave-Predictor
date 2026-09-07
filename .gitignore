@@ -4,11 +4,11 @@
 .RData
 .Ruserdata
 
-#Prevents from uploading massive ML files
-*.rds
-models/
-
 #Prevents uploading raw data files
 data/
-*.csv
 *.xlsx
+
+#Allow models and outputs to be pushed
+#*.rds
+#*.csv
+#models/
