@@ -1,22 +1,29 @@
----
-title: "Employee Attrition and Annual Leave Predictor"
-subtitle: "Psychology and Data Science Portfolio"
-author: "Venura Gunaratne"
-format: html
-server: shiny 
-editor: visual
----
-
-```{r}
-#| label: data-cleaning
-#| context: server
-#| include: false
+#===============================================================================================
+#         SCRIPT FOR THE ATTRITION AND ANNUAL LEAVE PREDICTOR 2026
+#===============================================================================================
 
 library(tidyverse)
-library(janitor) #Useful for converting the variable name to suitable formats.
-library(readxl)
+library(janitor)    #Useful for converting the variable name to suitable formats.
+library(readxl)     #Reading xlsx files.
+library(poissonreg) #Engine for poisson regression.
+library(tidymodels) #Contains important tools for modelling e.g. recipes, parsnip, etc.
+library(broom)      #Contains tools that provide polished odds ratios and IRRs (results).
+library(themis)     #Contains SMOTE, used for removing imbalances in data.
+library(furrr)      #Tool for maximizing the vectorization of Monte Carlo simulations.
+library(xgboost)    #Required for XGBoost.
+library(glmnet)     #Required for the log regression.
 
-set.seed(2026) #Seed is set to make sure that whenever the model is run it has the same distribution. As a result the model would produce predictions as accurate as possible.
+
+set.seed(2026) #Seed is set to make sure that whenever the model is run it has the same distribution. As a result the model would produce predictions as accurate as possible. Numbers being generated would be the same each time the script is run.
+
+if (!dir.exists("outputs")) dir.create("outputs") #Creates new folders for outputs/results and models. 
+if (!dir.exists("models")) dir.create("models")
+
+plan(multisession, workers = availableCores() - 1)   #Optimizes the cores available.
+
+#===============================================================================================
+#         CLEANING DATA AND SETTING THE PITCH
+#===============================================================================================
 
 raw_ibm <- read_excel ("WA_Fn-UseC_-HR-Employee-Attrition.xlsx") |> #Creating a copy of the original data set. It is easier for RStudio to read is xlsx form and make sure it's available in the working directory.
   
@@ -139,27 +146,12 @@ final_analytics_dataset <- cleaned_hr_dataset |>
     )
   ) |>
   select(-predicted_lambda) #Removes the predicted_lambda variable since it's not needed.
-```
 
-```{r}
-#| label: modeling-setup
-#| context: server
-#| include: false
-
-library(tidyverse)  
-library(poissonreg) #Engine for poisson regression.
-library(tidymodels) #Contains important tools for modelling e.g. recipes, parsnip, etc.
-library(broom)      #Contains tools that provide polished odds ratios and IRRs (results).
-library(themis)     #Contains SMOTE, used for removing imbalances in data.
-library(furrr)      #Tool for maximizing the vectorization of Monte Carlo simulations.
-
-plan(multisession, workers = availableCores() - 1) #Optimizes the available cores of the device while leaving one available for other needed tasks.
-
+write_rds(final_analytics_dataset, "outputs/final_analytics_dataset.rds") #Export cleaned data set for later use.
 
 #===============================================================================================
 #        DATA SPLITING AND CROSS-VALIDATION SET-UP
 #=============================================================================================== 
-set.seed(2026)
 
 #80/20 Train-Test Split (80% used to train the model and 20% left untouched to test the model).
 data_split <- initial_split(final_analytics_dataset,prop = 0.80, strata = attrition)
@@ -178,6 +170,8 @@ attrition_rec <- recipe(attrition ~ ., data = train_data) |> #Target variable is
   
   step_rm(total_annual_leaves, peak_quarter_leaves) |> #Synthetic (made-up) variables removed to stop the model from getting confused.
   
+  step_rm(hourly_rate, daily_rate, monthly_rate) |> #Removes multicollinearity to prevent confusion.
+  
   step_novel(all_nominal_predictors()) |> #Handles factor levels in categorical variables.
   
   step_dummy(all_nominal_predictors()) |> #Converts the categorical variables into binary 0/1.
@@ -188,8 +182,8 @@ attrition_rec <- recipe(attrition ~ ., data = train_data) |> #Target variable is
   
   step_smote(attrition) #SMOTE applying to balance out minorities.
 
-log_specs <- logistic_reg() |> #Standard binary classification logistic regression declared.
-  set_engine("glm") |>
+log_specs <- logistic_reg(penalty = 0.01, mixture = 0.5) |> #Standard binary classification logistic regression declared.
+  set_engine("glmnet") |>
   set_mode("classification")
 
 log_wf <- workflow() |> #Combines existing recipe (attrition_rec) with the regression (log_specs) into one.
@@ -197,6 +191,8 @@ log_wf <- workflow() |> #Combines existing recipe (attrition_rec) with the regre
   add_model(log_specs)
 
 log_fit <- fit(log_wf, data = train_data) #log_wf is used on the training data.
+
+write_rds(log_fit, "models/log_fit.rds") #Save the log regression model.
 
 attrition_odds_ratios <- broom::tidy(   #Obtain the Odds Ratios. "broom" cleans and structure the raw coefficients.
   extract_fit_parsnip(log_fit),  #Fitted model is pulled out of the workflow (log_wf).
@@ -218,6 +214,7 @@ auc_metric <- yardstick::roc_auc(attrition_preds, truth = attrition, .pred_Yes) 
 
 poisson_rec <- recipe(total_annual_leaves ~ ., data = train_data) |>
   step_rm(attrition, peak_quarter_leaves) |>
+  step_rm(hourly_rate, daily_rate, monthly_rate) |>
   step_novel(all_nominal_predictors()) |>
   step_dummy(all_nominal_predictors()) |>
   step_zv(all_predictors())
@@ -231,6 +228,8 @@ poisson_wf <- workflow() |>
   add_model(poisson_spec)
 
 poisson_fit <- fit(poisson_wf, data = train_data)
+
+write_rds(poisson_fit, "models/poisson_fit.rds")
 
 leave_irr <- broom::tidy(            #Obtain the IRR values.
   extract_fit_parsnip(poisson_fit),
@@ -249,9 +248,7 @@ poisson_metrics <- metrics(poisson_preds, truth = total_annual_leaves, estimate 
 #-----------------------------------------------------------------------------------------------
 # **IMPORTANT**
 
-#This section creates a folder for the outputs of the models in the directory. Use if needed.
-
-if (!dir.exists("outputs")) dir.create("outputs") #Creates output folder.
+#This section saves the outputs of the models in the directory. Use if needed.
 
 attrition_odds_ratios |>      #Log regression
   write_csv("outputs/attrition_odds_ratios.csv")
@@ -280,7 +277,7 @@ log_fit |>
   extract_fit_parsnip() |>
   broom::tidy() |>
   filter(term != "(Intercept)") |>
-  mutate(importance = abs(statistic)) |>
+  mutate(importance = abs(estimate)) |>
   slice_max(importance, n =10) |>
   write_csv("outputs/attrition_vip.csv")
 
@@ -289,21 +286,11 @@ log_fit |>
 #-----------------------------------------------------------------------------------------------
 
 
-plan(sequential)    #Resets the optimization of cores to normal after the model fitting is done.
-```
 
-```{r}
-#| label: advanced-ml-xgb-tuning
-#| context: server
-#| include: false
+#===============================================================================================
+#        ADVANCED ML AND XGBOOST TUNING
+#===============================================================================================
 
-library(tidyverse)     #Required packages for XGBoost hyperparameter tuning.
-library(tidymodels)
-library(xgboost)
-library(broom)
-library(furrr)
-
-plan(multisession, workers = availableCores() - 1)   #Optimizes the cores available.
 
 xgb_spec <- boost_tree(       #Declaring the model used (XGBoost).
   trees = tune(),            
@@ -318,7 +305,6 @@ xgb_wf <- workflow() |>            #The same recipe "attrition_rec" will be used
   add_recipe(attrition_rec) |>
   add_model(xgb_spec)
 
-set.seed(2026)
 xgb_grid <- grid_latin_hypercube(   #Latin Hyper-cube Sampling used to ensure the model explores evenly without going too deep.
   trees(range = c(100, 1000)),      #No. of decision trees made.
   tree_depth(range = c(3, 10)),     #No. of levels or depth the trees are allowed to form.
@@ -339,6 +325,8 @@ best_xgb_para <- select_best(xgb_results, metric = "roc_auc")  #Selects the best
 final_xgb_wf <- finalize_workflow(xgb_wf, best_xgb_para)
 
 xgb_fit <- fit(final_xgb_wf, data = train_data)   #Runs the best model across the entire training data set. 
+
+write_rds(xgb_fit, "models/xgb_fit.rds")
 
 xgb_preds <- predict(xgb_fit, test_data, type = "prob") |>  #Compares the predicted probabilities with the test data set.
   bind_cols(predict(xgb_fit, test_data)) |>
@@ -401,18 +389,10 @@ bind_rows(
 #-----------------------------------------------------------------------------------------------
 
 
-plan(sequential) #Ends core optimization.
-```
 
-```{r}
-#| label: monte-carlo-simulations
-#| context: server
-#| include: false
-
-library(tidyverse)
-library(furrr)
-
-plan(multisession, workers = availableCores() - 1)   #Optimizes the cores available.
+#===============================================================================================
+#        MONTE CARLO SIMULATIONS
+#===============================================================================================
 
 #New copy of the data set is generated where the two models run for each employee to predict their attrition or leave days.
 mc_base_data <- final_analytics_dataset |>      
@@ -422,7 +402,6 @@ mc_base_data <- final_analytics_dataset |>
   )
 
 n_sims <- 10000     #No. of simulations run.
-set.seed(2026)      #You already know ;). 
 
 #Workload is distributed across the cores. "rbinom" (binomial) flips a weighted coin according to personal probability to determine their attrition. "rpois" (poisson) draws random no. of leaves according to an employee's predicted count.
 simulation_results <- future_map_dfr(1:n_sims, function(sim_id) {  
@@ -435,7 +414,7 @@ simulation_results <- future_map_dfr(1:n_sims, function(sim_id) {
     total_attrition = sum(sim_attrition),
     total_leaves = sum(sim_leaves)
   )
-}, .options = furrr_options(seed = TRUE)) #Ensures the cores run statistically valid and reproducible numbers. It also ensures that the cores don't overlap with the generated simulations.
+}, .options = furrr_options(seed = 2026)) #Ensures the cores run statistically valid and reproducible numbers. It also ensures that the cores don't overlap with the generated simulations.
 
 
 plan(sequential) #End core optimization.
@@ -456,4 +435,3 @@ mc_summary <- simulation_results |>
 #Produces the results of the simulations. See report.pdf for the output and report.qmd for the R script.
 write_csv(simulation_results, "outputs/monte_carlo_results.csv")
 write_csv(mc_summary, "outputs/monte_carlo_summary.csv")
-```

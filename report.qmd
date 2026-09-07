@@ -20,4 +20,255 @@ format:
       Page 并 
 ---
 
-## 
+```{r setup, include=FALSE}
+library(tidyverse)
+library(knitr)
+```
+
+## The logistic regression model highlights key drivers of employee attrition expressed as Odds Ratios (OR):
+
+```{r odds-ratio-table, echo=FALSE}
+
+read_csv("outputs/attrition_odds_ratios.csv", show_col_types = FALSE) |>
+  filter(term != "(Intercept)") |>
+  select(Term = term, 'Odds Ratio' = estimate, '2.5% CI' = conf.low, '97.5% CI' = conf.high, 'pvalue' = p.value) |>
+  mutate(across(where(is.numeric), ~round(.x, 3))) |>
+  kable(caption = "Table 1: Attrtion Odds Ratios with 95% Confidence Intervals")
+```
+
+## Predictors for annual leave frequency modeled via Poisson regression (Incident Rate Ratios):
+
+```{r irr-table, echo=FALSE}
+
+read_csv("outputs/leave_irr.csv", show_col_types = FALSE) |>
+  filter(term != "(Intercept)") |>
+  select(Term = term, 'IRR' = estimate, '2.5% CI' = conf.low, '97.5% CI' = conf.high, 'pvalue' = p.value) |>
+  mutate(across(where(is.numeric), ~round(.x, 3))) |>
+  kable(caption = "Table 2: Leave Frequency Incident Rate Ratios with 95% Confidence Intervals")
+```
+
+## RMSE and MAE
+
+```{r poisson-metrics, echo=FALSE, fig.cap="Out-of-Sample Performance Metrics for Poisson Leave Prediction Engine"}
+
+library(tidyverse)
+
+# Read the Poisson metrics CSV
+poisson_metrics_df <- read_csv("outputs/poisson_metrics.csv", show_col_types = FALSE) |> 
+  mutate(
+    metric = toupper(metric),
+    metric = factor(metric, levels = c("RMSE", "MAE"))
+  )
+
+# Plot RMSE and MAE
+ggplot(poisson_metrics_df, aes(x = metric, y = value, fill = metric)) +
+  geom_col(width = 0.5, show.legend = FALSE) +
+  geom_text(aes(label = round(value, 3)), vjust = -0.5, fontface = "bold", size = 4) +
+  scale_fill_manual(values = c("RMSE" = "#2c3e50", "MAE" = "#e74c3c")) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    title = "Poisson Engine Out-of-Sample Error Metrics",
+    subtitle = "Lower values indicate higher predictive accuracy on test data",
+    x = "Evaluation Metric",
+    y = "Error (In Days/Leaves)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "gray30")
+  )
+```
+
+## Model Performance & Discrimination
+
+```{r roc-curve-plot, echo=FALSE, fig.cap="Model Performance and ROC-AUC"}
+library(tidyverse)
+
+# 1. Read exported metric and ROC curve data
+metrics <- read_csv("outputs/model_metrics.csv", show_col_types = FALSE)
+roc_coords <- read_csv("outputs/attrition_roc_curve.csv", show_col_types = FALSE)
+
+# 2. Extract the ROC-AUC value dynamically
+auc_value <- metrics %>%
+  filter(model == "Logistic Regression", metric == "ROC-AUC") %>%
+  pull(value) %>%
+  round(3)
+
+# 3. Create interactive or static plot with the dynamic AUC value
+ggplot(roc_coords, aes(x = 1 - specificity, y = sensitivity)) +
+  geom_path(color = "#2b5c8f", linewidth = 1.2) +
+  geom_abline(lty = 2, color = "gray50") +
+  annotate(
+    "text", x = 0.65, y = 0.25, 
+    label = paste("Model ROC-AUC =", auc_value), 
+    size = 5, fontface = "bold", color = "#2b5c8f"
+  ) +
+  labs(
+    title = "Attrition Model ROC Curve",
+    subtitle = paste("Evaluated on unseen test set (AUC:", auc_value, ")"),
+    x = "False Positive Rate (1 - Specificity)",
+    y = "True Positive Rate (Sensitivity)"
+  ) +
+  theme_minimal()
+```
+
+The model achieved an out-of-sample **ROC-AUC of 0.837**, demonstrating strong predictive capability in distinguishing high-risk attrition candidates from stable employees on unseen evaluation data.
+
+## Top 10 Predictors of Attrition
+
+```{r vip-plot, echo=FALSE, fig.cap="Top 10 Feature Importance Scores for Attrition Prediction"}
+
+library(tidyverse)
+
+# Read the exported VIP data
+vip_data <- read_csv("outputs/attrition_vip.csv", show_col_types = FALSE)
+
+# Plot using standard ggplot2
+ggplot(vip_data, aes(x = reorder(term, importance), y = importance)) +
+  geom_col(fill = "#2b5c8f") +
+  coord_flip() +
+  labs(
+    title = "Top 10 Predictors Driving Attrition",
+    x = "Predictor Term",
+    y = "Importance (|z-score|)"
+  ) +
+  theme_minimal()
+```
+
+## Comparison Between Log Regression and XGBoost Models
+
+```{r model-comparison-table, echo=FALSE}
+
+library(tidyverse)
+library(knitr)
+
+# Read model metrics CSV
+metrics_table <- read_csv("outputs/model_metrics.csv", show_col_types = FALSE)
+
+# Format table using knitr
+kable(
+  metrics_table, 
+  digits = 3, 
+  col.names = c("Model Architecture", "Performance Metric", "Test Score"),
+  caption = "Out-of-Sample Performance Comparison"
+)
+```
+
+Both baseline Logistic Regression and hyperparameter-tuned XGBoost were evaluated on an untouched 20% test data set (stratified by attrition status).
+
+## Comparative ROC Curve Between the Two Models
+
+```{r combined-roc-plot, echo=FALSE, fig.cap="Combined ROC Curves for Attrition Prediction Models"}
+
+library(tidyverse)
+
+# Read combined ROC curve coordinates
+roc_data <- read_csv("outputs/combined_roc_curves.csv", show_col_types = FALSE)
+
+# Fetch latest AUC scores dynamically for the plot subtitle
+auc_scores <- read_csv("outputs/model_metrics.csv", show_col_types = FALSE)
+log_auc <- round(auc_scores$value[auc_scores$model == "Logistic Regression"], 3)
+xgb_auc <- round(auc_scores$value[auc_scores$model == "XGBoost"], 3)
+
+# Render Comparative ROC Plot
+ggplot(roc_data, aes(x = 1 - specificity, y = sensitivity, color = model)) +
+  geom_path(linewidth = 1.2) +
+  geom_abline(lty = 2, color = "gray50", intercept = 0, slope = 1) +
+  scale_color_manual(values = c("Logistic Regression" = "#2b5c8f", "XGBoost" = "#d95f02")) +
+  labs(
+    title = "ROC Curve Comparison (Logistic Regression vs. XGBoost)",
+    subtitle = paste0("Logistic Regression AUC: ", log_auc, " | XGBoost AUC: ", xgb_auc),
+    x = "False Positive Rate (1 - Specificity)",
+    y = "True Positive Rate (Sensitivity)",
+    color = "Model Architecture"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+## Combined Multi-Model Comparison
+
+```{r tbl-all-models-comparison, echo=FALSE, tbl_cap="Comprehensive Predictive Engine Comparison Across Attrition and Leave Outcomes"}
+
+library(tidyverse)
+library(knitr)
+
+# Read combined model metrics CSV
+all_metrics_df <- read_csv("outputs/all_models_metrics.csv", show_col_types = FALSE)
+
+# Format as a Quarto Markdown Table
+all_metrics_df |> 
+  rename(
+    `Model Engine` = model,
+    `Target Outcome` = target,
+    `Metric` = metric,
+    `Test Score` = value
+  ) |> 
+  kable(digits = 3, align = "lllc")
+```
+
+```{r fig-all-model-chart, echo=FALSE, fig.cap="Comparative Overview of Model Metrics Across Prediction Engines"}
+
+# Visual chart for the combined model metrics
+all_metrics_df |> 
+  mutate(display_label = paste0(model, "\n(", metric, ")")) |> 
+  ggplot(aes(x = display_label, y = value, fill = model)) +
+  geom_col(width = 0.55, show.legend = FALSE) +
+  geom_text(aes(label = round(value, 3)), vjust = -0.5, fontface = "bold") +
+  scale_fill_brewer(palette = "Set2") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.18))) +
+  labs(
+    title = "Overall Predictive Engine Metric Comparison",
+    subtitle = "ROC-AUC evaluated for Attrition models | RMSE & MAE evaluated for Poisson Leave model",
+    x = "Model Engine & Evaluated Metric",
+    y = "Metric Score"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "gray30")
+  )
+```
+
+## Monte Carlo Model Summary
+
+```{r tbl-monte-carlo-summary, echo=FALSE, tbl_cap="Monte Carlo Workforce Risk Distribution (10,000 Simulated Futures)"}
+
+library(tidyverse)
+library(knitr)
+
+#Actual calculated mc_summary.
+mc_summary <- read_csv("outputs/monte_carlo_summary.csv", show_col_types = FALSE)
+
+# Construct a 2-row table directly from mc_summary metrics
+tibble(
+  `Simulated Outcome` = c("Total Resignations (Attrition)", "Total Cumulative Leave Days"),
+  `Expected Mean`     = c(round(mc_summary$mean_attrition, 1), round(mc_summary$mean_leaves, 1)),
+  `Lower 2.5% Bound`  = c(round(mc_summary$attrition_p2_5, 1), round(mc_summary$leaves_p2_5, 1)),
+  `Upper 97.5% Bound` = c(round(mc_summary$attrition_p97_5, 1), round(mc_summary$leaves_p97_5, 1))
+) |> 
+  kable(align = "lccc")
+```
+
+## Monte Carlo Distribution
+
+```{r monte-carlo-distribution, echo=FALSE, fig.cap="Simulated Organizational Attrition Distribution Across 10,000 Monte Carlo Futures"}
+
+simulation_results <- read_csv("outputs/monte_carlo_results.csv", show_col_types = FALSE)
+
+ggplot(simulation_results, aes(x = total_attrition)) +
+  geom_histogram(binwidth = 1, fill = "#2c3e50", color = "white", alpha = 0.85) +
+  geom_vline(xintercept = mc_summary$mean_attrition, color = "#e74c3c", linewidth = 1.2) +
+  geom_vline(xintercept = c(mc_summary$attrition_p2_5, mc_summary$attrition_p97_5), color = "#e67e22", linetype = "dashed", linewidth = 1) +
+  annotate("text", x = mc_summary$mean_attrition, y = Inf, label = paste("Mean:", round(mc_summary$mean_attrition, 1)), vjust = 2, color = "#e74c3c", fontface = "bold") +
+  labs(
+    title = "Monte Carlo Attrition Risk Distribution",
+    subtitle = "Dashed orange lines mark the 95% simulated interval bounds",
+    x = "Simulated Number of Resignations",
+    y = "Frequency across Runs"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(plot.title = element_text(face = "bold"))
+```
