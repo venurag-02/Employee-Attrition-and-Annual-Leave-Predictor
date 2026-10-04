@@ -8,6 +8,7 @@ README.html
 index.html
 index_files/
 outputs/scenarios.sqlite
+rsconnect/
 
 #Prevents uploading raw data files
 data/

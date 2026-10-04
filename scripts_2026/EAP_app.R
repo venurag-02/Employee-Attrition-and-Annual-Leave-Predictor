@@ -2,14 +2,27 @@
 #         R SHINY DASHBOARD: HR ATTRITION & ANNUAL LEAVE PREDICTOR 2026
 #===============================================================================
 
+# Core Shiny & UI Packages
 library(shiny)
 library(bslib)
-library(tidyverse)
-library(tidymodels)      #All the required libraries.
-library(ggplot2)
-library(DT)
-library(readr)
 library(shinyjs)
+library(DT)
+library(bsicons)
+
+# Data Manipulation & I/O
+library(tidyverse)
+library(readr)
+library(dplyr)
+
+# Modeling & Tidymodels Framework
+library(tidymodels)
+library(parsnip)
+library(workflows)
+
+# Underlying Model Engines (Required for predict.model_fit execution)
+library(glmnet)      # Engine for regularized logistic regression
+library(poissonreg)  # Engine for Poisson count models
+library(stats)       # Base statistical functions
 
 #Helper function to generate pie/donut chart ggplot objects
 
@@ -60,7 +73,30 @@ ui <- page_navbar(
   #Using custom CSS styles and hidden DOM elements to the page header.
   
   header = tags$head(
-    useShinyjs(), # Initialize shinyjs JavaScript functions across the webapp.
+    useShinyjs(), # Initialize shinyjs JavaScript functions across the webap.
+    
+    # ---------------------------------------------------------------------------
+    # ADD CLIENT-SIDE IDLE TIMEOUT SCRIPT HERE
+    # ---------------------------------------------------------------------------
+    tags$script(HTML("
+      var idleTime = 0;
+      $(document).ready(function () {
+          var idleInterval = setInterval(timerIncrement, 60000); // Check every 1 minute
+          $(this).mousemove(function (e) { idleTime = 0; });
+          $(this).keypress(function (e) { idleTime = 0; });
+      });
+
+      function timerIncrement() {
+          idleTime = idleTime + 1;
+          if (idleTime >= 10) { // 10 minutes of inactivity
+              Shiny.unbindAll();
+              alert('Session disconnected due to inactivity to preserve server hours.');
+              window.location.reload();
+          }
+      }
+    ")),
+    # ---------------------------------------------------------------------------
+    
     tags$style(HTML("
       /* Hide print container on screen */
       #print_report_container {
