@@ -3,6 +3,11 @@
 .Rhistory
 .RData
 .Ruserdata
+groq_key.txt
+README.html
+index.html
+index_files/
+outputs/scenarios.sqlite
 
 #Prevents uploading raw data files
 data/
