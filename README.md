@@ -40,7 +40,8 @@ This interactive dashboard enables HR teams and operational managers to evaluate
 │
 ├── README.md                   # Project documentation
 ├── report.pdf                  # Complete report detailing OR and IRR from statistical models
-└── report.qmd                  # Quarto source script for report.pdf
+├── report.qmd                  # Quarto source script for report.pdf
+└── trimmed_models.R            # Butchered the models to make their size smaller. Easier to deploy.
 ```
 
 ------------------------------------------------------------------------
