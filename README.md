@@ -102,3 +102,4 @@ shiny::runApp("scripts_2026/EAP_app.R")
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for details.
+
